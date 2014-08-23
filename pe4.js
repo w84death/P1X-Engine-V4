@@ -2,9 +2,9 @@
 *
 *
 *   P1X, Krzysztof Jankowski
-*   Untitled
+*   P1X Engine V4
 *
-*   abstract: game for the Ludum Dare 30 hackathon, "Connected worlds"
+*   abstract: Simple javascript engine for simple pixel art games
 *   engine: P1X Engine V4
 *   created: 23-08-2014
 *   license: do what you want and dont bother me
