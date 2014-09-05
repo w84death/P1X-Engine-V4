@@ -46,8 +46,16 @@ var Gfx = function(){
         scale: 4,
         sprite_size: 8,
     };
-    this.screen.width = (window.innerWidth/this.screen.scale)<<0;
-    this.screen.height = (window.innerHeight/this.screen.scale)<<0;
+    var game_div = document.getElementById('game'),
+        real_width = window.innerWidth > 1024 ? 1024 : window.innerWidth,
+        real_height = window.innerHeight > 768 ? 768 : window.innerHeight;
+
+    game_div.style.width = real_width + 'px';
+    game_div.style.height = real_height + 'px';
+    this.screen.width = (real_width/this.screen.scale)<<0;
+    this.screen.height = (real_height/this.screen.scale)<<0;
+
+
 };
 Gfx.prototype.init = function(params){
     this.loaded = 0;
@@ -68,15 +76,21 @@ Gfx.prototype.init = function(params){
 
     for (var i = 0; i < params.layers; i++) {
         var canvas = document.createElement('canvas');
-        canvas.width = this.screen.width;
-        canvas.height = this.screen.height;
+        canvas.width = this.screen.width*this.screen.scale;
+        canvas.height = this.screen.height*this.screen.scale;
+
         var ctx = canvas.getContext("2d");
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        ctx.msImageSmoothingEnabled = false;
+        ctx.imageSmoothingEnabled = false;
+
         this.layers.push({
             canvas: canvas,
             ctx: ctx,
             render: false
         });
-        canvas.style.webkitTransform = ' scale('+this.screen.scale+')';
+
         document.getElementById('game').appendChild(canvas);
     };
 };
@@ -86,7 +100,6 @@ Gfx.prototype.load = function(){
         if (this.sprites.hasOwnProperty(key)) size++;
     }
     if(this.loaded >= size){
-        game.gfx.init_tileset();
         return true;
     }
     return false;
@@ -94,44 +107,41 @@ Gfx.prototype.load = function(){
 Gfx.prototype.clear = function(layer){
     this.layers[layer].ctx.clearRect(
         0, 0,
-        this.screen.width, this.screen.height
+        this.screen.width*this.screen.scale,
+        this.screen.height*this.screen.scale
     );
 };
-Gfx.prototype.init_tileset = function(){
-    var canvas = document.createElement('canvas');
-    canvas.width = this.sprites.tileset.width;
-    canvas.height = this.sprites.tileset.height;
-    var ctx = canvas.getContext("2d");
-
-    ctx.drawImage(this.sprites.tileset,0,0);
-
-    this.tileset = [];
-    for (var y = 0; y < canvas.height/this.screen.sprite_size; y++) {
-        for (var x = 0; x < canvas.width/this.screen.sprite_size; x++) {
-            this.tileset.push(
-                ctx.getImageData(
-                    game.gfx.screen.sprite_size * x,
-                    game.gfx.screen.sprite_size * y,
-                    game.gfx.screen.sprite_size,
-                    game.gfx.screen.sprite_size
-                )
-            );
-        }
-    }
-};
 Gfx.prototype.draw_tileset = function(){
-    for (var i = 0; i < this.tileset.length; i++) {
+    for (var i = 0; i < this.tileset_ids.length; i++) {
         this.put_tile({
             id:i, x:i, y:0, layer:1
         });
-        this.gfx.layers[1].render = true;
+        this.layers[1].render = true;
     };
 };
 Gfx.prototype.put_tile = function(params){
-    this.layers[params.layer].ctx.putImageData(
-        this.tileset[params.id],
-        params.x*this.screen.sprite_size,
-        params.y*this.screen.sprite_size
+    var sx,sy,
+    _w = this.sprites.tileset.width / this.screen.sprite_size,
+    _h = this.sprites.tileset.height / this.screen.sprite_size;
+
+    if(params.id >= _w){
+        sx = params.id % _w;
+        sy = (params.id/_w)<<0;
+    }else{
+        sx = params.id;
+        sy = 0;
+    }
+
+    this.layers[params.layer].ctx.drawImage(
+        this.sprites.tileset,
+        sx*this.screen.sprite_size,
+        sy*this.screen.sprite_size,
+        this.screen.sprite_size,
+        this.screen.sprite_size,
+        params.x*this.screen.sprite_size*this.screen.scale,
+        params.y*this.screen.sprite_size*this.screen.scale,
+        this.screen.sprite_size*this.screen.scale,
+        this.screen.sprite_size*this.screen.scale
     );
 };
 
@@ -141,104 +151,137 @@ Gfx.prototype.put_tile = function(params){
 *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-var Gui = function(){};
+var Gui = function(){
+    this.layer = null;
+    this.bubbles = [];
+    this.buttons = [];
+};
 Gui.prototype.init = function(params){
     this.layer = params.layer;
-    this.bubbles = [];
+
+    this.add_button({
+        x: game.world.width-3,
+        y: 2,
+        sprites: [23,22],
+        changer: 'pause',
+        fn: function(){
+            game.pause = !game.pause;
+        }
+    });
+
+};
+Gui.prototype.zeros = function(num, size) {
+    var s = num+"";
+    while (s.length < size) s = "0" + s;
+    return s;
 };
 Gui.prototype.clear = function(){
     game.gfx.layers[this.layer].ctx.clearRect(
         0, 0,
-        game.gfx.screen.width, game.gfx.screen.height
+        game.gfx.screen.width*game.gfx.screen.scale,
+        game.gfx.screen.height*game.gfx.screen.scale
     );
 };
-Gui.prototype.draw_logo = function(params){
+Gui.prototype.draw_image = function(params){
+    var sx = params.x * game.gfx.screen.scale * game.gfx.screen.sprite_size,
+        sy = params.y * game.gfx.screen.scale * game.gfx.screen.sprite_size,
+        sprite = game.gfx.sprites[params.name];
+
+    if(params.center){
+        sx -= ((sprite.width * 0.5)<<0) * game.gfx.screen.scale;
+        sy -= ((sprite.height * 0.5)<<0) * game.gfx.screen.scale;
+    }
+
     game.gfx.layers[this.layer].ctx.drawImage(
-        game.gfx.sprites.logo,
-        (params.x*game.gfx.screen.sprite_size)-(game.gfx.sprites.logo.width*0.5),
-        (params.y*game.gfx.screen.sprite_size)-(game.gfx.sprites.logo.height*0.5)
+        sprite,
+        0,0,
+        sprite.width,
+        sprite.height,
+        sx,
+        sy,
+        sprite.width * game.gfx.screen.scale,
+        sprite.height * game.gfx.screen.scale
     );
 };
-Gui.prototype.draw_intro = function(params){
-    var ctx = game.gfx.layers[this.layer].ctx;
+Gui.prototype.draw_loading = function(params){
+    var ctx = game.gfx.layers[this.layer].ctx,
+        _w = game.gfx.screen.width*game.gfx.screen.scale,
+        _h = game.gfx.screen.height*game.gfx.screen.scale;
 
     ctx.textBaseline = 'bottom';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.font = "900 11px 'Source Code Pro', monospace,serif";
+    ctx.font = "900 "+(4*game.gfx.screen.scale)+"px 'Source Code Pro', monospace,serif";
     ctx.strokeStyle = '#fff';
 
-    ctx.fillText('P1X PRESENTS',
-        game.gfx.screen.width*0.5 << 0,
-        (game.gfx.screen.height*0.5 << 0) - 36
+    ctx.fillText('LOADING GAME..',
+        _w*0.5 << 0,
+        _h*0.5 << 0
     );
-
-    ctx.drawImage(game.gfx.sprites.logo,
-        (game.gfx.screen.width*0.5 << 0)-(game.gfx.sprites.logo.width*0.5),
-        ((game.gfx.screen.height*0.5 << 0)-(game.gfx.sprites.logo.height*0.5))-20
-    );
-
-    ctx.beginPath();
-    ctx.moveTo(24,(game.gfx.screen.height*0.5 << 0));
-    ctx.lineTo(game.gfx.screen.width-24,(game.gfx.screen.height*0.5 << 0));
-    ctx.stroke();
-
-    ctx.fillText('8X8 SPRITES; 16 COLOUR PALETTE',
-        game.gfx.screen.width*0.5 << 0,
-        (game.gfx.screen.height*0.5 << 0)+18
-    );
-
-    game.gfx.layers[this.layer].ctx.fillText('P1X ENGINE V4; HTTP://P1X.IN',
-        game.gfx.screen.width*0.5 << 0,
-        (game.gfx.screen.height*0.5 << 0)+32
-    );
-
-    ctx.fillText('@W84DEATH',
-        game.gfx.screen.width*0.5 << 0,
-        (game.gfx.screen.height*0.5 << 0)+48
-    );
-
-    ctx.beginPath();
-    ctx.moveTo(24,(game.gfx.screen.height*0.5 << 0) + 56);
-    ctx.lineTo(game.gfx.screen.width-24,(game.gfx.screen.height*0.5 << 0) + 56);
-    ctx.stroke();
-
-    if(game.timer % 2 == 1){
-        ctx.fillText('CLICK TO START',
-            game.gfx.screen.width*0.5 << 0,
-            (game.gfx.screen.height*0.5 << 0) + 74
-        );
-    }
 };
 Gui.prototype.draw_fps = function(){
     var ctx = game.gfx.layers[this.layer].ctx;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(
-        game.gfx.screen.width-(7*game.gfx.screen.sprite_size),
-        game.gfx.screen.height-(2*game.gfx.screen.sprite_size),
-        game.gfx.screen.sprite_size*6,
-        game.gfx.screen.sprite_size);
-    ctx.fillStyle = '#fff';
-    ctx.font = "900 9px 'Source Code Pro', monospace,serif";
+    ctx.font = "900 "+(5* game.gfx.screen.scale)+"px 'Source Code Pro', monospace,serif";
     ctx.textBaseline = 'bottom';
     ctx.textAlign = 'right';
     ctx.fillText('FPS '+game.fps,
-        game.gfx.screen.width-game.gfx.screen.sprite_size-2,
-        game.gfx.screen.height-game.gfx.screen.sprite_size+1
+        (game.world.width  - 2) * game.gfx.screen.scale * game.gfx.screen.sprite_size,
+        (game.world.height  -1 ) * game.gfx.screen.scale * game.gfx.screen.sprite_size
     );
 };
 Gui.prototype.draw_pointer = function(){
-    var x = (game.input.pointer.pos.x / game.gfx.screen.scale) << 0,
-        y = (game.input.pointer.pos.y / game.gfx.screen.scale) << 0;
+    var x = (game.input.pointer.pos.x ) << 0,
+        y = (game.input.pointer.pos.y ) << 0;
 
     game.gfx.layers[this.layer].ctx.drawImage(
         game.gfx.sprites.pointer,
         game.input.pointer.enable? 8 : 0, // x cut
         0, // y cut
-        8,8,x,y,8,8 // cut size, position, sprite size
+        8,8,x,y,8*game.gfx.screen.scale,8*game.gfx.screen.scale // cut size, position, sprite size
     );
 };
+Gui.prototype.add_button = function(params){
+    this.buttons.push({
+        pos: {
+            x: params.x,
+            y: params.y
+        },
+        sprites: params.sprites,
+        changer: params.changer,
+        fn: params.fn
+    });
+};
+Gui.prototype.draw_buttons = function(){
+    var key, btn;
 
+    for(key in this.buttons){
+        btn = this.buttons[key];
+
+        game.gfx.put_tile({
+            layer: this.layer,
+            id: game[btn.changer] ? btn.sprites[0] : btn.sprites[1],
+            x: btn.pos.x,
+            y: btn.pos.y
+        });
+    }
+};
+Gui.prototype.button_clicked = function(x,y){
+    var key, btn;
+
+    for(key in this.buttons){
+        btn = this.buttons[key];
+        if(
+            x >= btn.pos.x &&
+            x < btn.pos.x + 1 &&
+            y >= btn.pos.y &&
+            y < btn.pos. y + 1
+        ){
+            btn.fn();
+            return true;
+        }
+    }
+    return false;
+};
 /*
 *
 *   input function
@@ -293,150 +336,155 @@ Input.prototype.track_pointer = function(e){
 
 /*
 *
-*   main game mechanics
+*   Messages / conversations / tutorials
 *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+Messages = function(){
+    this.layer = null;
+    this.bubbles = [];
+};
+Messages.prototype.init = function(params){
+    this.layer = params.layer;
+};
+Messages.prototype.draw_message = function(params){
+    var ctx = game.gfx.layers[this.layer].ctx,
+        tile = 0, corner = {}, max_len = 0, len = 0, longest_line,
+        width, height, i,x,y;
 
-var game = {
+    ctx.fillStyle = '#000';
+    ctx.font = "900 "+(5*game.gfx.screen.scale)+"px 'Source Code Pro', monospace,serif";
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
 
-    gfx: new Gfx(),
-    gui: new Gui(),
-    input: new Input(),
+    for (i = 0; i < params.msg.length; i++) {
+        len = params.msg[i].length;
+        if(len > max_len) {
+            max_len = len;
+            longest_line = i;
+        }
+    };
+    longest_line = ctx.measureText(params.msg[longest_line]).width;
 
-    fps: 0,
-    world: {
-        width: null,
-        height: null,
-    },
-    state: 'loading',
-    timer: 0,
+    width = ((longest_line/game.gfx.screen.sprite_size/game.gfx.screen.scale)<<0 )+2;
+    height = i+1;
+    if(width<2) width = 2;
 
-    settings:{
-        water_animations: 36,
-        conversation_time: 30
-    },
+    corner = {
+        x: params.x - width,
+        y: params.y - height + 1
+    };
 
-    /*
-    *   init the engine
-    * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+    game.gui.draw_box({
+        layer: this.layer,
+        width: width,
+        height: height,
+        x: corner.x,
+        y: corner.y,
+        sprites: [
+            25,26,27,
+            26,26,28,
+            29,30,31
+        ]
+    });
 
-    init: function(){
-        // game world size (for now as big as screen)
-        this.world.width = (this.gfx.screen.width/this.gfx.screen.sprite_size)<<0;
-        this.world.height = (this.gfx.screen.height/this.gfx.screen.sprite_size)<<0;
 
-        // init game timer
-        window.setInterval(game.inc_timer,500);
-
-        // graphics init
-        this.gfx.init({
-            layers: 4
+    for (var i = 0; i < params.msg.length; i++) {
+        ctx.fillText(params.msg[i],
+            (corner.x*game.gfx.screen.sprite_size + 5 )*game.gfx.screen.scale ,
+            ((corner.y+i)*game.gfx.screen.sprite_size + 4)*game.gfx.screen.scale
+        );
+    };
+};
+Messages.prototype.add_conversation = function(params){
+    for (var i = 0; i < params.bubbles.length; i++) {
+        this.bubbles.push({
+            msg: params.bubbles[i],
+            pos: {
+                x:params.pos.x,
+                y:params.pos.y
+            },
+            delay: i===0 ? params.delay || false : false,
+            time: game.settings.conversation_time
         });
+    };
+};
+Messages.prototype.draw_conversation = function(){
+    var msg;
 
-        // gui init
-        this.gui.init({
-            layer: 3
-        })
-
-        // mouse events
-        this.input.init();
-    },
-
-    /*
-    *   game logic
-    * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    inc_timer: function(){
-        game.timer++;
-    },
-
-    new_game: function(){
-
-    },
-
-    update: function(delta_time){
-
-        switch(this.state){
-            case 'loading':
-                if(this.gfx.load()){
-                    this.gfx.layers[0].render = true;
-                    this.state = 'intro';
+    if(this.bubbles.length > 0){
+        bubble = this.bubbles[0];
+        if(bubble.delay && bubble.delay < 0){
+            if(bubble.time < 0){
+                this.draw_message({
+                    msg: bubble.msg,
+                    x: bubble.pos.x,
+                    y: bubble.pos.y
+                });
+                if(game.input.pointer.enable){
+                    this.bubbles.splice(0,1);
                 }
-            break;
-            case 'intro':
-                if(this.input.pointer.enable){
-                    this.new_game();
-                    this.state = 'game';
-                }
-            break;
-            case 'game':
-
-                // ?
-
-            break;
-            case 'game_over':
-                if(this.input.pointer.enable){
-                    this.new_game();
-                    this.state = 'game';
-                }
-            break;
+            }else{
+                bubble.time--;
+            }
+        }else{
+            bubble.delay--;
         }
-
-    },
-
-     render: function(delta_time){
-        this.gui.clear();
-        var i,x,y;
-
-        switch(this.state){
-            case 'loading':
-            break;
-            case 'intro':
-                if(this.gfx.layers[0].render){
-                    for (x = 0; x < this.world.width; x++) {
-                        for (y = 0; y < this.world.height; y++) {
-                            this.gfx.put_tile({
-                                layer:0,
-                                id:0,
-                                x:x,y:y
-                            });
-                        };
-                    };
-                    this.gfx.layers[0].render = false;
-                }
-                this.gui.draw_intro();
-            break;
-            case 'game':
-                this.gui.draw_fps();
-                this.gui.draw_logo({x:3,y:this.world.height-2});
-            break;
-            case 'game_over':
-            break;
-        }
-        this.gui.draw_pointer();
-    },
-
-
-    /*
-    *   main loop
-    * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    loop: function(delta_time){
-        this.update(delta_time);
-        this.render(delta_time);
-    },
-
+    }
 };
 
-game.init();
+/*
+*
+*   sound generation
+*
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+Moog = function(){
+    this.audio = new (window.AudioContext || window.webkitAudioContext)();
+};
+Moog.prototype.play = function(params){
+    if(params.pause) return;
+    var vol = params.vol || 0.2,
+        attack = params.attack || 20,
+        decay = params.decay || 300,
+        freq = params.freq || 30,
+        oscilator = params.oscilator || 0;
+        gain = this.audio.createGain(),
+        osc = this.audio.createOscillator();
+
+    // GAIN
+    gain.connect(this.audio.destination);
+    gain.gain.setValueAtTime(0, this.audio.currentTime);
+    gain.gain.linearRampToValueAtTime(params.vol, this.audio.currentTime + attack / 1000);
+    gain.gain.linearRampToValueAtTime(0, this.audio.currentTime + decay / 1000);
+
+    // OSC
+    osc.frequency.value = freq;
+    osc.type = oscilator; //"square";
+    osc.connect(gain);
+
+    // START
+    osc.start(0);
+
+    setTimeout(function() {
+        osc.stop(0);
+        osc.disconnect(gain);
+        gain.disconnect(game.moog.audio.destination);
+    }, decay)
+};
+
+/*
+*
+*   main loop init
+*
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 var time,
     fps = 0,
     last_update = (new Date)*1 - 1,
     fps_filter = 30;
 
-(function game_loop() {
+function game_loop() {
     requestAnimFrame(game_loop);
 
     var now = new Date().getTime(),
@@ -449,5 +497,4 @@ var time,
 
     game.fps = fps.toFixed(1);
     game.loop(delta_time);
-})();
-
+};
