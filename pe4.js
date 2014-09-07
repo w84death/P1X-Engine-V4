@@ -203,6 +203,44 @@ Gui.prototype.draw_image = function(params){
         sprite.height * game.gfx.screen.scale
     );
 };
+Gui.prototype.draw_box = function(params){
+    var x, y,
+        width = params.width,
+        height = params.height,
+        draw = {
+            x: params.x,
+            y: params.y
+        };
+
+    for (x = 0; x < width; x++) {
+        for (y = 0; y < height; y++) {
+            if(y===0){
+                if(x===0) tile = params.sprites[0];
+                if(x>0 && x<width-1) tile = params.sprites[1];
+                if(x===width-1) tile = params.sprites[2];
+            }
+            if(height > 2 && y>0){
+                if(x===0) tile = params.sprites[3];
+                if(x>0 && x<width-1) tile = params.sprites[4];
+                if(x===width-1) tile = params.sprites[5];
+            }
+            if(y===height-1){
+                if(x===0) tile = params.sprites[6];
+                if(x>0 && x<width-1) tile = params.sprites[7];
+                if(x===width-1) tile = params.sprites[8];
+            }
+
+            if(tile){
+                game.gfx.put_tile({
+                    layer: params.layer,
+                    id:tile,
+                    x: draw.x + x,
+                    y: draw.y + y
+                });
+            }
+        }
+    }
+};
 Gui.prototype.draw_loading = function(params){
     var ctx = game.gfx.layers[this.layer].ctx,
         _w = game.gfx.screen.width*game.gfx.screen.scale,
@@ -298,10 +336,11 @@ var Input = function(){
     };
 };
 Input.prototype.init = function(){
-    document.body.addEventListener('mousedown', this.enable_pointer, false);
-    document.body.addEventListener('mouseup', this.disable_pointer, false);
-    document.body.addEventListener('mousemove', this.track_pointer, false);
-    document.body.addEventListener("contextmenu", function(e){
+    var game_div = document.getElementById('game');
+    game_div.addEventListener('mousedown', this.enable_pointer, false);
+    game_div.addEventListener('mouseup', this.disable_pointer, false);
+    game_div.addEventListener('mousemove', this.track_pointer, false);
+    game_div.addEventListener("contextmenu", function(e){
         e.preventDefault();
     }, false);
 };
@@ -316,13 +355,17 @@ Input.prototype.enable_pointer = function(e){
         y = e.pageY;
     }
     game.input.pointer.enable = true;
+    game.user_select_on_screen();
 };
 Input.prototype.disable_pointer = function(){
     game.input.pointer.enable = false;
 };
 Input.prototype.track_pointer = function(e){
     e.preventDefault();
-    var x,y;
+    var x,y, bounds = this.getBoundingClientRect(),
+        sx = bounds.left,
+        sy = bounds.top;
+
     if(e.touches){
         x = e.touches[0].pageX;
         y = e.touches[0].pageY;
@@ -330,8 +373,8 @@ Input.prototype.track_pointer = function(e){
         x = e.pageX;
         y = e.pageY;
     }
-    game.input.pointer.pos.x = x;
-    game.input.pointer.pos.y = y;
+    game.input.pointer.pos.x = x - sx;
+    game.input.pointer.pos.y = y - sy;
 };
 
 /*
@@ -497,4 +540,50 @@ function game_loop() {
 
     game.fps = fps.toFixed(1);
     game.loop(delta_time);
+};
+
+
+/*
+*
+*   entities
+*
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+var Entity = function(params){
+    this.live = params.live;
+    this.sprites = params.sprites;
+    this.fps_limit = 6;
+    this.frame = 0;
+    this.frame_counter = 0;
+    this.pos = {
+        x: params.x,
+        y: params.y
+    };
+    this.target ={
+        x: params.x,
+        y: params.y
+    };
+    this.last_move = game.timer;
+};
+Entity.prototype.distance_to = function(params){
+    var xs = 0;
+    var ys = 0;
+
+    xs = params.x - this.pos.x;
+    xs = xs * xs;
+
+    ys = params.y - this.pos.y;
+    ys = ys * ys;
+
+    return Math.sqrt( xs + ys )<<0;
+};
+Entity.prototype.animate = function(){
+    if(this.life && this.frame_counter++ > this.fps_limit){
+        this.frame++;
+        if(this.frame >= this.sprites.length){
+            this.frame = 0;
+        }
+        this.frame_counter = 0;
+        game.gfx.layers[1].render = true;
+    }
 };

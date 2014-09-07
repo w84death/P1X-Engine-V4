@@ -164,6 +164,10 @@ var game = {
 
     },
 
+    user_select_on_screen: function(){
+
+    },
+
     update: function(delta_time){
 
         switch(this.state){
